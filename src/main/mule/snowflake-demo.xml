@@ -43,7 +43,7 @@ output application/json
 		</ee:transform>
 	</flow>
 	<flow name="snowflake-demoFlow4" doc:id="b4d06c81-8d62-488d-a1b5-e1f4041a0667" >
-		<s3:get-object doc:name="Get object" doc:id="03ad646f-faf9-4fbc-8237-329c6ac60c04" config-ref="Amazon_S3_Configuration" bucketName="dejim" key="snowflake/2M.csv" outputMimeType="application/csv; separator=|; header=false"/>
+		<s3:get-object doc:name="Get object" doc:id="03ad646f-faf9-4fbc-8237-329c6ac60c04" config-ref="Amazon_S3_Configuration" bucketName="${secure::aws.s3.bucket}" key="snowflake/2M.csv" outputMimeType="application/csv; separator=|; header=false"/>
 		<ee:transform doc:name="Transform Message" doc:id="a5824c33-9b4e-4303-be56-346140e2c3ab">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
