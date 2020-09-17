@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="dce71aea-b7ae-4642-8e1d-a572ded631d4" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<db:config name="Snowflake_Config" doc:name="Database Config" doc:id="8c916c13-201f-4ff6-b004-d475e8e7d736" >
+		<db:generic-connection url="${secure::snowflake.url}" driverClassName="net.snowflake.client.jdbc.SnowflakeDriver" user="${secure::snowflake.username}" password="${secure::snowflake.password}">
+			<db:pooling-profile />
+		</db:generic-connection>
+	</db:config>
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="434c7a5a-3825-4e8f-9f32-8fb18d13a9f8" file="mule-properties.yaml" key="${mule.key}" />
+	<s3:config name="Amazon_S3_Configuration" doc:name="Amazon S3 Configuration" doc:id="fa469692-8d33-4745-b473-ebb412bf9197" >
+		<s3:basic-connection accessKey="${secure::aws.key}" secretKey="${secure::aws.secret}" />
+	</s3:config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="2c252e55-0aaf-43f1-84e9-b1bf6b58c560" >
+		<db:my-sql-connection host="${secure::db.host}" port="${secure::db.port}" user="${secure::db.username}" password="${secure::db.password}" database="${secure::db.db}" />
+	</db:config>
+	<flow name="snowflake-demoFlow2" doc:id="6d1ef53b-7452-49e4-8ca5-69ee69ad9d5e" >
+		<http:listener doc:name="/test" doc:id="2df2b4b7-e2d8-4405-bd0b-f1d0f8c4f6ca" config-ref="HTTP_Listener_config" path="/test"/>
+		<async doc:name="Async" doc:id="bf161710-3071-4a7c-907e-4c171d9c4d37" >
+			<flow-ref doc:name="Flow Reference" doc:id="4f7b6a2d-24ac-4cc8-b714-748db015dcf9" name="snowflake-demoFlow4"/>
+		</async>
+		<ee:transform doc:name="Transform Message" doc:id="b97adc03-d04c-409a-ad36-779194334fbd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Status":"Running"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="snowflake-demoFlow4" doc:id="b4d06c81-8d62-488d-a1b5-e1f4041a0667" >
+		<s3:get-object doc:name="Get object" doc:id="03ad646f-faf9-4fbc-8237-329c6ac60c04" config-ref="Amazon_S3_Configuration" bucketName="dejim" key="snowflake/2M.csv" outputMimeType="application/csv; separator=|; header=false"/>
+		<ee:transform doc:name="Transform Message" doc:id="a5824c33-9b4e-4303-be56-346140e2c3ab">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<batch:job jobName="snowflake-demoBatch_Job" doc:id="869cd24c-4b5e-4e8f-a788-b9ecd447a990">
+			<batch:process-records>
+				<batch:step name="Batch_Step" doc:id="a2affff5-d04a-4aed-9cc5-dbef0c7cb14f">
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="8e536710-0b36-4688-a060-f264c19f0c10" streaming="true">
+						<db:bulk-insert doc:name="Bulk insert" doc:id="a1aacacc-09f7-444a-8bba-8c64d8ed6ef9" config-ref="Snowflake_Config">
+							<db:sql><![CDATA[INSERT INTO Price (ID,
+Price) VALUES (
+:column_0,
+:column_1)]]></db:sql>
+						</db:bulk-insert>
+					</batch:aggregator>
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete>
+				<logger level="INFO" doc:name="Logger" doc:id="becead8b-afb9-4b0f-a8f4-340f2bf7738a" message='#[payload.elapsedTimeInMillis ++ " ms to process " ++ payload.successfulRecords ++ " records"]' />
+			</batch:on-complete>
+		</batch:job>
+	</flow>
+	<flow name="snowflake-demoFlow1" doc:id="9fd122f5-9eb9-4741-b05b-a25c2ab1e54b" >
+		<http:listener doc:name="/load" doc:id="bff28e57-306f-42c2-b135-5c5022330342" config-ref="HTTP_Listener_config" path="/load"/>
+		<db:select doc:name="Select" doc:id="bbc30c00-c82e-41fd-a993-157d3bdb84b9" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT `CompanyName`, `ContactName`, `ContactTitle`, `CustomerID` FROM Customers]]></db:sql>
+		</db:select>
+		<s3:create-object doc:name="Create object" doc:id="fbf2fc27-37bb-4e82-a48a-61b6484f4041" config-ref="Amazon_S3_Configuration" bucketName="dejim/snowflake" key='#["file" ++ now() ++".csv"]' acl="PUBLIC_READ_WRITE">
+			<s3:object-content ><![CDATA[#[output application/csv header=false, separator="|"
+---
+payload]]]></s3:object-content>
+		</s3:create-object>
+		<logger level="INFO" doc:name="Logger" doc:id="610abb0d-0eea-44e7-b318-c9599816d166" message='#["End " ++ now() as String {format: "hh:mm:ss"}]' />
+		<ee:transform doc:name="Transform Message" doc:id="ee96041f-42b6-41fc-ac13-70ece69e7e18" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		
+	</flow>
+	<flow name="snowflake-demoFlow" doc:id="4e4b91b1-c579-452e-8c4f-e2b970879123" >
+		<http:listener doc:name="/copy" doc:id="03487392-9e95-4e5d-a4fb-3f77a194772a" config-ref="HTTP_Listener_config" path="/copy"/>
+		<db:execute-ddl doc:name="Create Stage" doc:id="c7d07c35-6c6e-4382-8365-7ca2f2e669d2" config-ref="Snowflake_Config" >
+			<db:sql ><![CDATA[#[output application/java --- "create or replace stage s3_ext_stage url='" ++ p('secure::aws.s3.bucket') ++ "' credentials=(aws_key_id='" ++ p('secure::aws.key')++ "' aws_secret_key='" ++ p('secure::aws.secret') ++ "');"]]]></db:sql>
+		</db:execute-ddl>
+		<db:execute-ddl doc:name="Create Format" doc:id="45455afe-918f-4826-bce3-509c5d48f146" config-ref="Snowflake_Config">
+			<db:sql ><![CDATA[CREATE OR REPLACE FILE FORMAT MY_CSV_FORMAT
+TYPE = csv
+FIELD_DELIMITER = '|'
+ERROR_ON_COLUMN_COUNT_MISMATCH=false ]]></db:sql>
+		</db:execute-ddl>
+		<db:execute-ddl doc:name="Copy" doc:id="968934d6-c72f-4852-a0a7-43d37d1e9b34" config-ref="Snowflake_Config">
+			<db:sql><![CDATA[copy into PRICE from @S3_EXT_STAGE file_format = (format_name = 'my_csv_format') pattern='.*.csv' on_error = 'skip_file';]]></db:sql>
+		</db:execute-ddl>
+		<ee:transform doc:name="Transform Message" doc:id="2f063700-7cd3-4c27-9014-2793eb7a43b2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
